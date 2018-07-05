@@ -3,6 +3,7 @@ from setuptools import setup, find_packages
 
 REQUIRES = [
     'aiohttp==3.2.1',
+    'dataclasses',
     'requests==2.18.4',
     'websockets==4.0.1',
 ]

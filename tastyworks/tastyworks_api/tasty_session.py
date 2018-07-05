@@ -1,13 +1,13 @@
-import aiohttp
+import asyncio
 import datetime
 import logging
 
+import aiohttp
 import requests
 
-LOGGER = logging.getLogger(__name__)
+from tastyworks.models import trading_account
 
-# TODO:
-# * Implement get option chains
+LOGGER = logging.getLogger(__name__)
 
 
 class TastyAPISession(object):
@@ -17,6 +17,14 @@ class TastyAPISession(object):
         self.password = password
         self.logged_in = False
         self.session_token = self.get_session_token()
+        self.account_data = []
+
+        # do setup functions here
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self._async_init())
+
+    async def _async_init(self):
+        self.account_data = await self._get_trading_accounts()
 
     def get_session_token(self):
         if self.logged_in and self.session_token:
@@ -43,11 +51,14 @@ class TastyAPISession(object):
     async def get_option_chains(self, symbol: str) -> dict:
         # NOTE: This guy may probably need to get refactored out into a sub-class of this one
         # For now, this just returns dxFeed-compatible option names
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f'{self.API_url}/option-chains/{symbol}/nested', headers=self._get_request_headers()) as response:
-                if response.status != 200:
-                    raise Exception(f'Could not find option chain for symbol {symbol}')
-                resp = await response.json()
+        async with aiohttp.request(
+            'GET',
+            f'{self.API_url}/option-chains/{symbol}/nested',
+            headers=self._get_request_headers()
+        ) as response:
+            if response.status != 200:
+                raise Exception(f'Could not find option chain for symbol {symbol}')
+            resp = await response.json()
         res = {}
         data = resp['data']['items'][0]
         for exp in data['expirations']:
@@ -74,6 +85,25 @@ class TastyAPISession(object):
 
     def session_valid(self):
         return self._validate_session(self.session_token)
+
+    async def _get_trading_accounts(self):
+        accounts = []
+        url = f'{self.API_url}/customers/me/accounts'
+        async with aiohttp.request('GET', url) as response:
+            if response.status != 200:
+                raise Exception('Could not get trading accounts info for some reason...')
+            data = await response.json()['data']
+
+        for entry in data['items']:
+            if entry['authority-level'] != 'owner':
+                continue
+            acct = trading_account.Account(
+                entry['account-number'],
+                entry['external-id'],
+                entry['margin-or-cash'] == 'Margin'
+            )
+            accounts.append(acct)
+        return accounts
 
     def _validate_session(self, session_token):
         resp = requests.post(f'{self.API_url}/sessions/validate', headers=self._get_request_headers())
