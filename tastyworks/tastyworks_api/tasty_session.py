@@ -105,6 +105,10 @@ class TastyAPISession(object):
             accounts.append(acct)
         return accounts
 
+    def get_trading_account(self, acct_id=None):
+        if not acct_id:
+            return self.account_data[0]
+
     def _validate_session(self, session_token):
         resp = requests.post(f'{self.API_url}/sessions/validate', headers=self._get_request_headers())
         if resp.status_code != 201:
